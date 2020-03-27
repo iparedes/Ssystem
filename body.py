@@ -21,7 +21,7 @@ class Body:
         # if density is given let's calculate the radius (even if a radius is given)
         if density>0:
             self.density=density
-            self.radius=((3*self.mass.value)/(4*pi*self.density))
+            self.radius=((3*self.mass.value)/(4*pi*self.density))**(1/3)
         else:
             # if radius is given let's calculate the density
             if self.radius>0:

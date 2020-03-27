@@ -1,5 +1,5 @@
 from astropy import constants as const
-from scipy.stats import lognorm
+from scipy.stats import *
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -7,11 +7,11 @@ import random
 import bisect
 from body import *
 
-# todo: use quantities for the attributes
+# todo: use quantities for the attributes. Right now is a freaking mess mixing values and quantities
 # todo: check the distribution of densities
-# Let's use sun mass in Sun masses and planet mass in Earth masses
+# todo: restrict original radius. The SOI edge is to far. Something between 10AU adn 50AU mabye...
 
-PLANETARY_MASS_PCTG=0.2  # Planetary mass as a percentage of the solar mass. Originally 0.2
+PLANETARY_MASS_PCTG=0.0015  # Planetary mass as a percentage of the solar mass.
 
 S=0.985 # Sigma for the lognorm distribution
 SCALE=1/10000 # Scale for the lognorm distribution. eq to exp(mu). Originally 1/10000
@@ -36,6 +36,8 @@ class Ssystem:
 
         # The sphere of influence is the maximum distance for bodies orbiting in the system
         self.SOI=self.Sun.SOI()
+        # todo: SOI is maybe too much, putting a cap here
+        self.SOI=random.randrange(10,50)*const.au.value
         #self.SOI=const.au*10
 
         # total planetary mass in Earth masses
@@ -45,9 +47,18 @@ class Ssystem:
         self.bodies=[]
         self.remainingPlanetaryMassPctg=1
 
+        # create the function for the distribution of masses
+        # todo: parametrize mean,desv,a,b
+        self.mass_distr=self._get_truncated_normal(0,10,10,100)
+
+
+    def _get_truncated_normal(self,mean=0, sd=1, low=0, upp=10):
+        return truncnorm((low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
+
 
     def addBodies(self):
-        while (self.remainingPlanetaryMassPctg>0):
+        #while (self.remainingPlanetaryMassPctg>0):
+        while (self.planetaryMass>0):
             mass=self.randMass()
             orbit=self.randOrbit()
             dens=self.randDensity()
@@ -91,7 +102,8 @@ class Ssystem:
 
 
             #sample=lognorm.rvs(S, scale=SCALE) # sample is a pctg of the remaining planetary mass
-            sample=np.random.lognormal(self.mass_dist_normal_mean, self.mass_dist_normal_std)
+            #sample=np.random.lognormal(self.mass_dist_normal_mean, self.mass_dist_normal_std)
+            sample=self.mass_distr.rvs()
 
             # if sample is bigger than remaining, just take everything
             if sample>=self.planetaryMass:

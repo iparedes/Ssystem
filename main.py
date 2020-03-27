@@ -8,8 +8,11 @@ import numpy as np
 # b=Planet(mass=0.2,density=1000)
 # a.roche_limit(b)
 
+E=Planet(mass=1,density=5514)
+
 SS=Ssystem()
 
+print("planetary mass:"+str(SS.planetaryMass))
 print("adding bodies")
 SS.addBodies()
 
