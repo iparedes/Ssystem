@@ -1,7 +1,9 @@
 from astropy import constants as const
+from astropy import units as u
 from scipy.stats import *
 import numpy as np
 import matplotlib.pyplot as plt
+import quantities as pq
 
 import random
 import bisect
@@ -21,8 +23,8 @@ MIN_DENSITY=500
 MAX_DENSITY=10000
 
 # parameters for the mass distribution function
-SIGMA_MASS=1.0
-MU_MASS=10.0
+MU_MASS=1.0
+SIGMA_MASS=10.0
 
 class Ssystem:
 
@@ -32,24 +34,28 @@ class Ssystem:
         self.mass_dist_normal_mean= np.log(MU_MASS) - self.mass_dist_normal_std**2 / 2
 
         self.planetaryMassPctg=planetaryMassPctg # total mass of planets as a pctg of the sun mass
-        self.Sun=Star(solarMass)
+
+        density=1410
+        self.Sun=Star(mass=1,radius=1,density=density)
 
         # The sphere of influence is the maximum distance for bodies orbiting in the system
         self.SOI=self.Sun.SOI()
         # todo: SOI is maybe too much, putting a cap here
-        self.SOI=random.randrange(10,50)*const.au.value
+        self.SOI=random.randrange(10,30)*u.au
+        #self.SOI=5*const.au.value
         #self.SOI=const.au*10
 
         # total planetary mass in Earth masses
-        self.planetaryMass=self.Sun.mass_SM*(const.M_sun/const.M_earth)*self.planetaryMassPctg
+        self.planetaryMass=self.Sun.mass*self.planetaryMassPctg
+        self.planetaryMass=self.planetaryMass.to('M_earth')
         #self.planetaryMass=(solarMass*self.planetaryMassPctg)*(const.M_sun/const.M_earth)
+        self.remainingPlanetaryMass=u.Quantity(self.planetaryMass)
 
         self.bodies=[]
-        self.remainingPlanetaryMassPctg=1
 
         # create the function for the distribution of masses
         # todo: parametrize mean,desv,a,b
-        self.mass_distr=self._get_truncated_normal(0,10,10,100)
+        self.mass_distr=self._get_truncated_normal(0,0.8,0,100)
 
 
     def _get_truncated_normal(self,mean=0, sd=1, low=0, upp=10):
@@ -64,7 +70,41 @@ class Ssystem:
             dens=self.randDensity()
             print("adding mass: "+str(mass))
             nb=Planet(mass=mass,density=dens,orbit_radius=orbit)
+            #nb=Body(mass=mass,density=dens,orbit_radius=orbit)
             bisect.insort_left(self.bodies, nb)
+
+
+    # Perform step 2 for all moon systems to resolve hill-sphere conflicts of moons.
+    # Whether a moon can have a stable satellite is a matter of debate among the astronomy community
+    # (no example is known in our solar system). When you dont want any moon-moons,
+    # simply delete the smaller moon or put it on a different random orbit.
+    def consolidate(self):
+       bodies=0
+       bodies_now=len(self.bodies)
+
+       while (bodies!=bodies_now):
+           self.stats()
+           bodies=bodies_now
+           # Creates moons
+           self.consolidateBodies(self.bodies)
+
+           # Look for impossible moons
+           for b in self.bodies:
+               if len(b.satellites)>1:
+                   b.satellites.sort(key=lambda x: x.mass, reverse=True)
+                   for p in b.satellites:
+                       idx=b.satellites.index(p)
+                       for q in b.satellites[idx+1:]:
+                            if p!=q:
+                                hills=p.hill_sphere(b)
+                                dist=p.orbital_distance(q)
+                                if dist<hills:
+                                    print("breaking moon")
+                                    # q is in the hill_sphere of p, so we remove it and add to the planet
+                                    b.satellites.remove(q)
+                                    b.mass+=q.mass
+           self.roching()
+           bodies_now=len(self.bodies)
 
 
 
@@ -73,37 +113,49 @@ class Ssystem:
     # Any less massive planet in the hill sphere of a more massive planet becomes a moon of that planet.
     # Randomly-generate the orbital radius of the moon around the parent with a logarithmic distribution
     # between 0 and the sphere of influence of the parent.
-    def consolidateBodies(self):
+    def consolidateBodies(self,bodies):
         for p in self.bodies:
             print("consolidating "+str(p))
-            idx=self.bodies.index(p)
-            for q in self.bodies[idx+1:]:
+            idx=bodies.index(p)
+            for q in bodies[idx+1:]:
                 if p!=q:
                     hills=p.hill_sphere(self.Sun)
                     dist=p.orbital_distance(q)
                     if dist<hills:
                         # make it a moon
                         print("mooning!")
-                        self.bodies.remove(q)
+                        bodies.remove(q)
                         q.orbital_radius=dist
                         p.satellites.append(q)
 
-
+    def roching(self):
+        self.bodies.sort(key=lambda x: x.mass, reverse=True)
+        for p in self.bodies:
+            idx=self.bodies.index(p)
+            for q in self.bodies[idx+1:]:
+                if p!=q:
+                    rochelimit=p.roche_limit(q)
+                    dist=p.orbital_distance(q)
+                    print("dist: "+str(dist)+" rocheL: "+str(rochelimit))
+                    if dist<rochelimit:
+                        print("Roching!!")
+                        self.bodies.remove(q)
+                        mass=q.mass+sum([x.mass for x in q.satellites])
+                        p.mass+=mass
 
 
     # returns mass (in Earth masses for a new body from the remaining planetary mass
     # returns 0 if there is not remaining planetary mass
     # it uses a lognormal distribution with params set at the creation of the Ssystem
     def randMass(self):
-        if self.remainingPlanetaryMassPctg>0:
-
-            # SCREWED UP THIS. THE NEW FUNCTION TO GET A RANDOM SAMPLE IS TUNED TO RETURN A MASS IN EM FOR
-            # THE NEW PLANET. IT SHOULD RETURN A PERCENTAGE!!! (OR NOT)
+        if self.remainingPlanetaryMass>0:
 
 
             #sample=lognorm.rvs(S, scale=SCALE) # sample is a pctg of the remaining planetary mass
             #sample=np.random.lognormal(self.mass_dist_normal_mean, self.mass_dist_normal_std)
-            sample=self.mass_distr.rvs()
+
+            # sample is in earth masses
+            sample=20*self.mass_distr.rvs() * u.M_earth
 
             # if sample is bigger than remaining, just take everything
             if sample>=self.planetaryMass:
@@ -125,8 +177,9 @@ class Ssystem:
     # returns the radius of a orbit inside the SOI of the system
     # In Astronomic Units
     def randOrbit(self):
-        orbit=random.randrange(0,self.SOI)
-        orbit=orbit/const.au.value
+        a=self.SOI.to('au')
+        orbit=random.uniform(0,a.value)
+        #orbit=orbit/const.au.value
         return orbit
 
     def randDensity(self):
@@ -136,21 +189,35 @@ class Ssystem:
         return d
 
 
+
+    def stats(self):
+        print("SOI: "+str(self.SOI.to('lyr'))+" light years")
+        print("# planets: "+str(len(self.bodies)))
+        nmoons=sum([len(x.satellites) for x in self.bodies])
+        print("# moons:"+str(nmoons))
+
     def dump(self):
-        print (str(len(self.bodies))+" bodies")
-        data=[(x.mass_EM,x.radius_ER,x.orbit_radius_AU) for x in self.bodies]
-        print("smallest mass: "+str(min(data)[0]))
-        print("largest mass: "+str(max(data)[0]))
-        print("smallest size: "+str(min(data)[1]))
-        print("largest size: "+str(max(data)[1]))
-        print("closest: "+str(min(data)[2]))
-        print("furthest: "+str(max(data)[2]))
+        self.stats()
+
+        self.bodies.sort(key=lambda x: x.orbit_radius, reverse=True)
+
+        data=[(x.mass,x.radius,x.orbit_radius) for x in self.bodies]
+        mins=list(map(min,zip(*data)))
+        maxs=list(map(max,zip(*data)))
+
+        print("smallest mass: "+str(mins[0].to('M_earth')))
+        print("largest mass: "+str(maxs[0].to('M_earth')))
+        print("smallest size: "+str(mins[1].to('R_earth')))
+        print("largest size: "+str(maxs[1].to('R_earth')))
+        print("closest: "+str(mins[2].to('au')))
+        print("furthest: "+str(maxs[2].to('au')))
         print
         for p in self.bodies:
             print(p.dump())
+        pass
 
     def mass_histogram(self):
-        masses=[x.mass_EM for x in self.bodies]
+        masses=[x.mass.to('M_earth').value for x in self.bodies]
         plt.hist(masses)
         plt.show()
 

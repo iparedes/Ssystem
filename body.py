@@ -1,27 +1,48 @@
 from astropy import constants as const
+from astropy import units as u
 from math import pi
 
+
 # Galaxy mass in sun masses
-M_galaxy=2e12
+M_galaxy=2e12 * u.M_sun
 
 # Sun distance to the galaxy center in meters
 # Used to calculate the SOI of a star
 # We are assuming that the generated solar systems are in remote corners of the galaxy, like ours
-D_galaxy_center=2.5733e20
+D_galaxy_center=2.5733e20 * u.m
+
 
 class Body:
+    # mass, radius, orbit_radius and density should be quantities (value and unit)
+    # if no unit is given, converts as followsÑ
     # mass and radius in Kgs and meters
     # orbit_radius [m]
     # density [Kg/m3]
     # If a density is given, then disregards the given radius (if any) and calculates it according to the mass
-    def __init__(self,mass=0,radius=0,orbit_radius=0,density=0):
-        self.mass=mass
-        self.radius=radius
+    def __init__(self,mass,radius,orbit_radius=0,density=0):
+
+        try:
+            self.mass=mass.to('kg')
+        except AttributeError:
+            self.mass=mass*u.kg
+
+        try:
+            self.radius=radius.to('m')
+        except AttributeError:
+            self.radius=radius*u.m
+
+        try:
+            self.orbit_radius=orbit_radius.to('m')
+        except AttributeError:
+            self.orbit_radius=orbit_radius*u.m
 
         # if density is given let's calculate the radius (even if a radius is given)
         if density>0:
-            self.density=density
-            self.radius=((3*self.mass.value)/(4*pi*self.density))**(1/3)
+            try:
+                self.density=density.to(u.kg / u.m**3)
+            except AttributeError:
+                self.density=density*u.kg/u.m**3
+            self.radius=((3*self.mass)/(4*pi*self.density))**(1/3)
         else:
             # if radius is given let's calculate the density
             if self.radius>0:
@@ -57,43 +78,74 @@ class Body:
 
 class Planet(Body):
 
-    # mass and radius are entered in earth units, then converted to Kgs and meters
+    # mass and radius are entered in earth units
     # orbit_radius is entered in AU
+    # desity [kg/m^3]
+    # expect floats and converts them to quantities
     def __init__(self,mass=1,radius=1,orbit_radius=1,density=5514):
 
-        masskg=mass*const.M_earth
-        radiusm=radius*const.R_earth
-        orbit_radiusm=orbit_radius*const.au
-        Body.__init__(self,mass=masskg,radius=radiusm,orbit_radius=orbit_radiusm,density=density)
+        try:
+            mass=mass.to('M_earth')
+        except AttributeError:
+            mass=mass*u.M_earth
 
-        # attributes for mass and radius in Earth units
-        self.mass_EM=mass
-        self.radius_ER=self.radius/const.R_earth
-        self.orbit_radius_AU=orbit_radius
+        try:
+            radius=radius.to('R_earth')
+        except AttributeError:
+            radius=radius*u.R_earth
+
+        try:
+            orbit_radius=orbit_radius.to('au')
+        except AttributeError:
+            orbit_radius=orbit_radius*u.au
+
+        try:
+            density=density.to(u.kg / u.m**3)
+        except AttributeError:
+            density=density*u.kg/u.m**3
+
+        Body.__init__(self,mass=mass,radius=radius,orbit_radius=orbit_radius,density=density)
+
 
     def dump(self):
-        cad="mass: "+str(self.mass_EM)+" radius: "+str(self.radius_ER)+" satellites: "+str(len(self.satellites))
+        cad="mass: "+str(self.mass.to('M_earth'))+" radius: "+str(self.radius.to('R_earth'))+"distance: "+str(self.orbit_radius)+" satellites: "+str(len(self.satellites))
         return cad
 
 
 class Star(Body):
-    # mass and radius are entered in sun units, then converted to Kgs and meters
+
+    # mass and radius are entered in sun units
+    # orbit_radius is entered in AU
+    # desity [kg/m^3]
+    # expect floats and converts them to quantities
     def __init__(self,mass=1,radius=1,orbit_radius=0,density=1410):
 
-        masskg=mass*const.M_sun
-        radiusm=radius*const.R_sun
-        Body.__init__(self,mass=masskg,radius=radiusm,orbit_radius=orbit_radius,density=density)
 
+        try:
+            mass=mass.to('M_sun')
+        except AttributeError:
+            mass=mass*u.M_sun
 
-        # attributes for mass and radius in Sun units
-        self.mass_SM=mass
-        self.radius_SR=self.radius/const.R_sun
-        self.orbit_radius=0
+        try:
+            radius=radius.to('R_sun')
+        except AttributeError:
+            radius=radius*u.R_sun
 
+        try:
+            orbit_radius=orbit_radius.to('au')
+        except AttributeError:
+            orbit_radius=orbit_radius*u.au
+
+        try:
+            density=density.to(u.kg / u.m**3)
+        except AttributeError:
+            density=density*u.kg/u.m**3
+
+        Body.__init__(self,mass=mass,radius=radius,orbit_radius=orbit_radius,density=density)
 
 
     # returns the radius (m) of the sphere of influence of the Sun
     # Uses the mass of the galaxy as second body
     def SOI(self):
-        soi=D_galaxy_center*(self.mass_SM/M_galaxy)**(2/5)
+        soi=D_galaxy_center*(self.mass.to('M_sun')/M_galaxy)**(2/5)
         return soi
