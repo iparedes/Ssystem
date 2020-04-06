@@ -16,17 +16,20 @@ from astropy import units as u
 #
 # B=Body(mass=mass,radius=radius,density=density)
 #
-E=Planet(mass=1,density=5514)
-m=Planet(mass=0.0122,density=3340)
 
-roche=E.roche_limit(m)
+S=Star(mass=1,radius=1)
+#
+# E=Planet(mass=1,density=5514)
+# m=Planet(mass=0.0122,density=3340)
+#
+# roche=E.roche_limit(m)
 
-SS=Ssystem()
+SS=Ssystem(S)
 
 print("planetary mass:"+str(SS.planetaryMass))
 print("adding bodies")
 SS.addBodies()
-SS.mass_histogram()
+SS.orbital_dist_histogram()
 
 #Earth=Planet()
 #Moon=Planet(mass=0.0123,orbit_radius=1.0025,density=3300)
@@ -39,8 +42,8 @@ SS.mass_histogram()
 
 print(str(len(SS.bodies))+" in the system")
 print ("consolidating")
-SS.consolidate()
+#SS.consolidate()
 SS.dump()
-SS.mass_histogram()
+SS.orbital_dist_histogram()
 
 pass
